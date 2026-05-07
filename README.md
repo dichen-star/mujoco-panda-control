@@ -20,6 +20,7 @@
 - 主要依赖：numpy, scipy, matplotlib, imageio
 
 ## 项目结构
+```
 mujoco-panda-control/
 ├── assets/
 │   └── mujoco_menagerie/        # DeepMind 机器人模型库（git 忽略）
@@ -37,7 +38,7 @@ mujoco-panda-control/
 ├── requirements.txt
 ├── .gitignore
 └── README.md
-
+```
 ## 进度
 
 - [x] **Day 1**：环境搭建（WSL2 + MuJoCo），双摆仿真
@@ -51,19 +52,9 @@ mujoco-panda-control/
 - [ ] **Week 3**：轨迹规划 + 模型预测控制 (MPC)
 - [ ] **Week 4**：具身智能模块（Diffusion Policy / 模仿学习）
 
-## 快速开始
-git clone https://github.com/dichen-star/mujoco-panda-control.git
-cd mujoco-panda-control
-conda create -n robot python=3.10 -y
-conda activate robot
-pip install -r requirements.txt
-mkdir -p assets && cd assets
-git clone https://gh-proxy.com/https://github.com/google-deepmind/mujoco_menagerie.git
-cd ..
-python scripts/04_panda_sine_motion.py
-
 ## 参考资料
 
 - Lynch & Park, *Modern Robotics: Mechanics, Planning, and Control*
 - DeepMind MuJoCo Menagerie: https://github.com/google-deepmind/mujoco_menagerie
 - Franka Emika Panda 官方文档
+
