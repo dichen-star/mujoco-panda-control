@@ -4,7 +4,8 @@ __pycache__/
 .idea/
 *.mp4
 *.png
-!docs/*.png
+!logs/*.png
+!logs/*.mp4
 .DS_Store
 .ipynb_checkpoints/
 assets/mujoco_menagerie/
