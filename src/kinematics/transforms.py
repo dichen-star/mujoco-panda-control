@@ -217,7 +217,97 @@ def trans_inv(T):
     T_inv[:3, :3] = R.T
     T_inv[:3, 3] = -R.T @ p
     return T_inv
+def vec6_to_se3(V):
+    """
+    6 维旋量向量 → 4x4 se(3) 矩阵
+    
+    V = (omega, v) → [V] = [[omega], v]
+                            [0,      0]]
+    
+    Args:
+        V: (6,) 数组，前 3 是 omega，后 3 是 v
+    Returns:
+        (4, 4) se(3) 矩阵
+    """
+    V = np.asarray(V).flatten()
+    omega = V[:3]
+    v = V[3:]
+    
+    se3_mat = np.zeros((4, 4))
+    se3_mat[:3, :3] = vec_to_so3(omega)
+    se3_mat[:3, 3] = v
+    return se3_mat
 
+
+def matrix_exp6(se3_mat):
+    """
+    SE(3) 矩阵指数
+    
+    输入 [V]θ（已经把 θ 吸收进去了），输出 e^([V]θ)
+    
+    分两种情况：
+    - 旋转分量为 0（纯平移）：e^([V]θ) = I + [V]θ
+    - 否则：用罗德里格斯 + G(θ) 公式
+    
+    Args:
+        se3_mat: (4, 4) se(3) 矩阵 = [V]θ 形式
+    Returns:
+        (4, 4) SE(3) 齐次变换矩阵
+    """
+    omega_theta = so3_to_vec(se3_mat[:3, :3])  # 提取 omega*theta
+    theta = np.linalg.norm(omega_theta)
+    
+    if theta < 1e-12:
+        # 纯平移情况：e^([V]) = I + [V]（因为 [V]^2 = 0 当 omega=0）
+        T = np.eye(4) + se3_mat
+        return T
+    
+    # 一般情况：分离 omega_hat 和 theta
+    omega_hat = omega_theta / theta
+    omega_hat_mat = vec_to_so3(omega_hat)
+    
+    # 罗德里格斯公式（旋转部分）
+    R = np.eye(3) + np.sin(theta) * omega_hat_mat + (1 - np.cos(theta)) * (omega_hat_mat @ omega_hat_mat)
+    
+    # G(theta) 矩阵（平移部分的积分系数）
+    G = (np.eye(3) * theta 
+         + (1 - np.cos(theta)) * omega_hat_mat 
+         + (theta - np.sin(theta)) * (omega_hat_mat @ omega_hat_mat))
+    
+    # 提取 v_theta（已经包含 theta）
+    v_theta = se3_mat[:3, 3]
+    v = v_theta / theta
+    
+    T = np.eye(4)
+    T[:3, :3] = R
+    T[:3, 3] = G @ v
+    return T
+
+
+def fk_in_space(M, S_list, theta_list):
+    """
+    空间坐标系 POE 正运动学公式
+    
+    T = e^([S_1]θ_1) · e^([S_2]θ_2) ··· e^([S_n]θ_n) · M
+    
+    Args:
+        M: (4, 4) 零位末端位姿
+        S_list: (n, 6) 数组，每行是一个 screw axis
+        theta_list: (n,) 关节角度
+    Returns:
+        T: (4, 4) 末端在空间坐标系下的位姿
+    """
+    M = np.asarray(M)
+    S_list = np.asarray(S_list)
+    theta_list = np.asarray(theta_list).flatten()
+    
+    T = M.copy()
+    # 从最后一个关节往前累乘（注意公式是 S_1 在最左，但我们从右往左乘，先乘 M）
+    for i in range(len(theta_list) - 1, -1, -1):
+        S_theta = S_list[i] * theta_list[i]
+        T = matrix_exp6(vec6_to_se3(S_theta)) @ T
+    
+    return T
 
 if __name__ == "__main__":
     # 简单 smoke test：跑通就行，正式测试在 tests/test_transforms.py
