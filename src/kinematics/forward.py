@@ -49,7 +49,22 @@ def panda_fk(theta):
         raise ValueError(f"Panda 需要 7 个关节角，但收到 {len(theta)}")
     
     return fk_in_space(PANDA_M, PANDA_S_LIST, theta)
-
+def panda_jacobian(theta):
+    """
+    Panda 7-DoF 空间雅可比
+    
+    Args:
+        theta: (7,) 关节角度
+    Returns:
+        J_s: (6, 7) 空间雅可比矩阵
+    """
+    from .jacobian import jacobian_space
+    
+    theta = np.asarray(theta).flatten()
+    if len(theta) != 7:
+        raise ValueError(f"Panda 需要 7 个关节角，但收到 {len(theta)}")
+    
+    return jacobian_space(PANDA_S_LIST, theta)
 
 if __name__ == "__main__":
     # 零位测试：T(0) 应该等于 M

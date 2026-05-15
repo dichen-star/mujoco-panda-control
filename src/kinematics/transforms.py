@@ -217,6 +217,28 @@ def trans_inv(T):
     T_inv[:3, :3] = R.T
     T_inv[:3, 3] = -R.T @ p
     return T_inv
+def adjoint(T):
+    """
+    SE(3) 的伴随表示 Ad_T，6×6 矩阵
+    
+    用来把旋量从一个 frame 变换到另一个 frame：
+    V_b = Ad_{T_ba} * V_a
+    
+    Args:
+        T: (4, 4) 齐次变换
+    Returns:
+        (6, 6) 伴随矩阵
+    """
+    R = T[:3, :3]
+    p = T[:3, 3]
+    
+    p_hat = vec_to_so3(p)
+    
+    Ad = np.zeros((6, 6))
+    Ad[:3, :3] = R
+    Ad[3:, :3] = p_hat @ R
+    Ad[3:, 3:] = R
+    return Ad
 def vec6_to_se3(V):
     """
     6 维旋量向量 → 4x4 se(3) 矩阵
