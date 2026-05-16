@@ -304,7 +304,70 @@ def matrix_exp6(se3_mat):
     T[:3, :3] = R
     T[:3, 3] = G @ v
     return T
+def matrix_log6(T):
+    """
+    SE(3) 矩阵对数：齐次变换 T → 4x4 se(3) 矩阵 [V]*theta
+    
+    这是 matrix_exp6 的逆运算。
+    
+    Args:
+        T: (4, 4) 齐次变换矩阵
+    Returns:
+        (4, 4) se(3) 矩阵 = [V]*theta 形式
+    """
+    R = T[:3, :3]
+    p = T[:3, 3]
+    
+    # Step 1: 从 R 算轴角
+    cos_theta = (np.trace(R) - 1) / 2
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)
+    
+    if abs(cos_theta - 1) < 1e-9:
+        # theta ≈ 0：纯平移
+        se3_log = np.zeros((4, 4))
+        se3_log[:3, 3] = p
+        return se3_log
+    
+    if abs(cos_theta + 1) < 1e-9:
+        # theta ≈ pi：奇点，用对角线推 axis
+        theta = np.pi
+        diag = np.diag(R)
+        i = np.argmax(diag)
+        axis = np.zeros(3)
+        axis[i] = np.sqrt((R[i, i] + 1) / 2)
+        for j in range(3):
+            if j != i:
+                axis[j] = R[i, j] / (2 * axis[i])
+        omega_hat = vec_to_so3(axis)
+    else:
+        theta = np.arccos(cos_theta)
+        omega_hat = (R - R.T) / (2 * np.sin(theta))
+    
+    # Step 2: 算 G^{-1}(theta)
+    cot_half = 1.0 / np.tan(theta / 2)
+    G_inv = (np.eye(3) / theta 
+             - 0.5 * omega_hat 
+             + (1.0 / theta - 0.5 * cot_half) * (omega_hat @ omega_hat))
+    
+    # Step 3: 拼成 se(3) 矩阵
+    se3_log = np.zeros((4, 4))
+    se3_log[:3, :3] = omega_hat * theta
+    se3_log[:3, 3] = G_inv @ p * theta
+    return se3_log
 
+
+def se3_to_vec6(se3_mat):
+    """
+    se(3) 矩阵 → 6 维旋量向量（vec6_to_se3 的逆运算）
+    
+    Args:
+        se3_mat: (4, 4) se(3) 矩阵
+    Returns:
+        (6,) 旋量向量 (omega, v)
+    """
+    omega = so3_to_vec(se3_mat[:3, :3])
+    v = se3_mat[:3, 3]
+    return np.concatenate([omega, v])
 
 def fk_in_space(M, S_list, theta_list):
     """
