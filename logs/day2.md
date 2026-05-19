@@ -43,4 +43,3 @@
 - 精读 Modern Robotics 第 3 章：刚体变换
 - 实现 `src/kinematics/rotations.py`：罗德里格斯公式、旋转矩阵 ↔ 四元数 ↔ 欧拉角
 - 配合 scipy.spatial.transform.Rotation 写单元测试
-- 不写 Panda 相关代码，专注数学基础

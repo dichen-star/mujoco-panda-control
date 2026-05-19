@@ -45,4 +45,3 @@
 - 精读 Modern Robotics 第 6.2 节：数值逆运动学
 - 实现 panda_ik(T_target, theta_init) 用 Damped Least Squares (DLS)
 - 测试 100 个随机目标位姿，成功率 > 95%
-- 切换到 VS Code 编辑代码，告别 nano 痛苦
