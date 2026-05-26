@@ -110,11 +110,22 @@ def main():
 
     env.close()
 
-    # ---------- 画对比图 ----------
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    # ---------- 画对比图(v2:可读性优化)----------
+    plt.rcParams.update({
+        "font.size": 11,
+        "axes.titlesize": 13,
+        "axes.labelsize": 12,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+    })
 
-    # 左:三方指标对比
-    ax = axes[0]
+    fig = plt.figure(figsize=(15, 6))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1, 1.2], wspace=0.30)
+    ax_left = fig.add_subplot(gs[0])
+    ax_right = fig.add_subplot(gs[1])
+
+    # ============ 左:三方对比柱状图(双 y 轴拆分,避免量级冲突)============
     labels = ["Random", "Greedy IK\n(oracle)", "PPO\n(learned)"]
     success = [rand_stats["success_rate"]*100,
                ik_stats["success_rate"]*100,
@@ -122,43 +133,85 @@ def main():
     finals = [rand_stats["mean_final_dist_mm"],
               ik_stats["mean_final_dist_mm"],
               ppo_stats["mean_final_dist_mm"]]
-    colors = ["#888888", "#2ca02c", "#d62728"]
-    x = np.arange(3)
-    w = 0.35
-    ax2 = ax.twinx()
-    bars1 = ax.bar(x - w/2, success, w, color=colors, alpha=0.6, label="Success rate (%)")
-    bars2 = ax2.bar(x + w/2, finals, w, color=colors, alpha=1.0, label="Final dist (mm)")
-    ax.set_xticks(x); ax.set_xticklabels(labels)
-    ax.set_ylabel("Success rate (%)", color="gray")
-    ax2.set_ylabel("Mean final distance (mm)")
-    ax2.set_yscale("log")
-    ax.set_title(f"Policy comparison ({args.episodes} episodes)")
-    ax.set_ylim(0, 105)
-    for b, v in zip(bars1, success):
-        ax.text(b.get_x()+b.get_width()/2, v+2, f"{v:.0f}%", ha="center", fontsize=9)
-    for b, v in zip(bars2, finals):
-        ax2.text(b.get_x()+b.get_width()/2, v*1.1, f"{v:.0f}", ha="center", fontsize=9)
+    colors = ["#9e9e9e", "#2ca02c", "#d62728"]
 
-    # 右:PPO 成功 episode 的距离曲线(展示收敛行为)
-    ax = axes[1]
+    x = np.arange(3)
+    w = 0.36
+
+    ax2 = ax_left.twinx()
+
+    bars_succ = ax_left.bar(x - w/2, success, w,
+                            color=colors, alpha=0.55,
+                            edgecolor="black", linewidth=0.8,
+                            label="Success rate")
+    bars_dist = ax2.bar(x + w/2, finals, w,
+                       color=colors, alpha=1.0,
+                       edgecolor="black", linewidth=0.8,
+                       label="Final distance")
+
+    ax_left.set_xticks(x)
+    ax_left.set_xticklabels(labels)
+    ax_left.set_ylabel("Success rate (%)", color="#444")
+    ax_left.set_ylim(0, 115)                                  # 给 label 留空间
+    ax_left.tick_params(axis="y", labelcolor="#444")
+    ax_left.set_title(f"Policy comparison (n={args.episodes} episodes)",
+                      pad=12)
+    ax_left.grid(True, axis="y", alpha=0.25, linestyle="--")
+    ax_left.set_axisbelow(True)
+
+    ax2.set_ylabel("Mean final distance (mm)", color="#222")
+    ax2.set_yscale("log")
+    ax2.set_ylim(1, max(finals) * 3)                          # log 上限留空间
+    ax2.tick_params(axis="y", labelcolor="#222")
+
+    # 柱顶标签(success 在上,distance 在数字旁,不再相互压住)
+    for b, v in zip(bars_succ, success):
+        ax_left.text(b.get_x() + b.get_width()/2, v + 2.5,
+                     f"{v:.0f}%", ha="center", va="bottom",
+                     fontsize=10, fontweight="bold", color="#444")
+    for b, v in zip(bars_dist, finals):
+        ax2.text(b.get_x() + b.get_width()/2, v * 1.15,
+                 f"{v:.0f}mm", ha="center", va="bottom",
+                 fontsize=10, fontweight="bold", color="#222")
+
+    # 合并图例
+    h1, l1 = ax_left.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax_left.legend(h1 + h2, l1 + l2, loc="upper left",
+                   frameon=True, framealpha=0.9)
+
+    # ============ 右:PPO 成功 episodes 收敛曲线 ============
     traces = ppo_stats["success_traces"][:30]
     for trace in traces:
-        ax.plot(np.array(trace)*1000, color="#d62728", alpha=0.25, lw=1)
-    ax.axhline(50, color="black", ls="--", lw=1, label="5cm success threshold")
-    ax.set_xlabel("Step")
-    ax.set_ylabel("Distance to target (mm)")
-    ax.set_title(f"PPO success episodes: distance vs step (n={len(traces)})")
-    ax.set_yscale("log")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+        ax_right.plot(np.array(trace) * 1000,
+                      color="#d62728", alpha=0.25, lw=1.2)
+
+    # 画一条中位数粗线,显示"典型收敛行为"
+    max_len = max(len(t) for t in traces)
+    # 把每条 trace padding 到 max_len(后段用 nan 不参与中位数)
+    padded = np.full((len(traces), max_len), np.nan)
+    for i, t in enumerate(traces):
+        padded[i, :len(t)] = np.array(t) * 1000
+    median_curve = np.nanmedian(padded, axis=0)
+    ax_right.plot(median_curve, color="#7f0000", lw=2.5,
+                  label=f"Median (n={len(traces)})")
+
+    ax_right.axhline(50, color="black", ls="--", lw=1.2,
+                     label="5cm success threshold")
+
+    ax_right.set_xlabel("Step within episode")
+    ax_right.set_ylabel("Distance to target (mm)")
+    ax_right.set_yscale("log")
+    ax_right.set_title("PPO convergence: individual successes + median",
+                       pad=12)
+    ax_right.legend(loc="upper right", frameon=True, framealpha=0.9)
+    ax_right.grid(True, alpha=0.25, linestyle="--")
+    ax_right.set_axisbelow(True)
 
     plt.tight_layout()
     out = "logs/day14_ppo_eval.png"
-    plt.savefig(out, dpi=130, bbox_inches="tight")
+    plt.savefig(out, dpi=140, bbox_inches="tight")
     print(f"\nFigure saved: {out}")
-    print("=" * 60)
-    print("Day 14 done.")
-    print("=" * 60)
 
 
 if __name__ == "__main__":
