@@ -1,95 +1,108 @@
 # MuJoCo Panda Control
 
-基于 MuJoCo 的 7-DoF Franka Emika Panda 机械臂全栈控制系统。从运动学、动力学建模出发，逐步实现关节空间控制、任务空间控制、轨迹规划、模型预测控制（MPC）等核心算法，最终结合具身智能方向（Diffusion Policy / 模仿学习）。
+从经典控制到强化学习:在 MuJoCo 仿真中,用 7-DoF Franka Emika Panda 系统实现机器人
+运动学、动力学、四类控制器、强化学习与域随机化,并完成跨范式对比。下一步面向具身智能。
+
+## 周总结博客
+
+- [Week 1:从零搭建 7-DoF 机械臂运动学库](docs/week1_summary.md)
+- [Week 2:从动力学到四种控制器](docs/week2_summary.md)
+- [Week 3:从控制论到强化学习,与跨范式对决](docs/week3_summary.md)
+
+## 关键数据
+
+| 模块 | 指标 | 对照 |
+|---|---|---|
+| 正运动学 (POE) | 与 MuJoCo 误差 ~1e-7 | 100 随机位形 |
+| 雅可比 | 1e-15(机器精度) | 100 随机位形 |
+| 逆运动学 (DLS) | 0.34 mm,97% 成功率 | 100 随机目标 + 随机重启 |
+| PD + 重力补偿 | 圆轨迹稳态 0.23 mm | Day 9 |
+| 计算力矩控制 (CTC) | 圆轨迹稳态 0.13 mm | Day 10 |
+| 笛卡尔阻抗控制 | 胡克定律误差 1% | Day 11 |
+| PPO (位置控制) | 81% 触达成功率,65 mm | 100 随机目标,与 IK oracle 持平 |
+| PPO + Domain Randomization | worst case 26%(vs nominal 8%) | 力矩控制下扰动鲁棒性 3.25× |
+
+跨范式对决(Day 17):
+
+| 方法 | 精度 (Scene 1) | 泛化 (Scene 2) | 鲁棒 (Scene 3) |
+|---|---|---|---|
+| CTC (model-based) | 0.148 mm | 100% | 100% |
+| PPO_pos (model-free) | 220.7 mm | 82% | 82% |
+| PPO_torque_DR (robust RL) | 277.5 mm | 17% | 20% |
+
+每种范式都有自己的强项,不存在普适最优——选型决策树详见 Week 3 总结。
 
 ## 演示
 
-### Week 1：运动学三件套 + 圆轨迹跟踪
+### Week 3 三方对决
+![Grand Comparison](logs/day17_grand_comparison.png)
 
-末端在 XY 平面跟踪 0.15m 半径的圆形轨迹（10 秒一周）：
+### Week 2 四控制器对比(同一圆轨迹 + 15N 扰动)
+![Controller Comparison](logs/day12_controller_comparison.png)
 
+### Week 1 圆轨迹跟踪
 ![Circle Tracking](logs/day7_circle_tracking.png)
 
-视频效果：[`logs/day7_circle_demo.mp4`](logs/day7_circle_demo.mp4)（点击下载）
-
-### IK 收敛特性（Day 6）
-
-DLS 逆运动学在 6 次迭代内达到 24 微米精度：
-
-![IK Convergence](logs/day6_ik_convergence.png)
-
-### 奇异位形分析（Day 5）
-
-扫描 Panda joint4 观察可操作度 μ 变化：
-
-![Singularity Analysis](logs/day5_singularity.png)
-
-### 关节空间运动（Day 2）
-
-7 个关节按不同频率/振幅的正弦运动，末端在三维空间画出复杂闭合轨迹：
-
-![Sine Motion](logs/day2_sine_motion.png)
-
-## 关键指标（Week 1）
-
-| 模块 | 精度 | 验证方法 |
-|------|------|---------|
-| 正运动学 (POE) | < 1e-7 | 100 随机位形 vs MuJoCo |
-| 雅可比矩阵 | 1e-15（机器精度）| 100 随机位形 vs MuJoCo |
-| 逆运动学 (DLS) | 0.34 mm | 97% 成功率（含随机重启）|
-| 圆轨迹跟踪 | 20 mm 稳态 | MuJoCo 默认位置伺服 |
+视频:[`logs/day7_circle_demo.mp4`](logs/day7_circle_demo.mp4)
 
 ## 技术栈
 
-- **数学基础**: Modern Robotics（POE 公式、SE(3) 李代数、DLS）
-- **仿真引擎**: MuJoCo 3.7
-- **可视化**: Matplotlib, MuJoCo Viewer, ImageIO (MP4 离屏渲染)
-- **核心库**: NumPy, SciPy
-- **测试框架**: 自定义单元测试 + 与 MuJoCo 对照验证
-- **开发环境**: Ubuntu 24.04 (WSL2) + VS Code Remote
-
+- **仿真**: MuJoCo 3.7,Franka Panda(mujoco_menagerie)
+- **强化学习**: Stable-Baselines3, Gymnasium 0.29
+- **数学/控制**: Modern Robotics(POE / SE(3) 李代数 / DLS),自实现动力学补偿
+- **核心库**: NumPy, SciPy, PyTorch(SB3 后端)
+- **测试**: 全部核心算法与 MuJoCo 内置实现对照,精度可复现
+- **开发环境**: Ubuntu 24.04 (WSL2) + VS Code Remote + Git
 
 ## 项目结构
+
 ```
 mujoco-panda-control/
-├── assets/
-│   └── mujoco_menagerie/        # DeepMind 机器人模型库（git 忽略）
 ├── src/
-│   ├── kinematics/              # 运动学：FK / Jacobian / IK
-│   ├── controllers/             # 控制器：PD / CTC / 阻抗控制 / MPC
-│   └── utils/                   # 工具函数
-├── scripts/                     # 演示脚本
-│   ├── 01_hello_mujoco.py       # 双摆 hello world
-│   ├── 02_explore_panda.py      # 探索 Panda 模型结构
-│   ├── 03_interactive_panda.py  # 关节扫描可视化
-│   ├── 04_panda_sine_motion.py  # 7 关节正弦运动
-│   └── 05_record_video.py       # 录制 MP4 视频
-├── logs/                        # 学习日志、效果图、视频
-├── requirements.txt
-├── .gitignore
-└── README.md
+│   ├── kinematics/         # FK / Jacobian / IK
+│   ├── controllers/        # PD+G / CTC / 阻抗
+│   └── envs/               # Gymnasium 环境封装 + DR + 力矩控制版
+├── scripts/                # 27 个递进的实验脚本(按 Day 编号)
+├── tests/                  # 单元测试 + 与 MuJoCo 对照验证
+├── models/                 # 训练好的 PPO / DR 策略权重
+├── logs/                   # 每日日志 + 实验图 + 训练曲线 + 演示视频
+└── docs/                   # 周总结博客
 ```
+
 ## 进度
 
-### Week 1: 运动学（已完成 ✅）
-- [x] Day 1: 环境搭建（WSL2 + MuJoCo）
-- [x] Day 2: 加载 Franka Panda + 关节扫描 + 视频
+### Week 1: 运动学 ✅
+- [x] Day 1: 环境搭建(WSL2 + MuJoCo)
+- [x] Day 2: Panda 加载 + 关节扫描 + 视频
 - [x] Day 3: SO(3) / SE(3) 变换 + 单元测试
-- [x] Day 4: 正运动学（POE）
-- [x] Day 5: 雅可比矩阵 + 奇异性分析
-- [x] Day 6: 逆运动学（DLS）
+- [x] Day 4: 正运动学(POE)
+- [x] Day 5: 雅可比 + 奇异性分析
+- [x] Day 6: 逆运动学(DLS,97% 成功率)
 - [x] Day 7: 圆轨迹跟踪综合演示
 
-### Week 2: 动力学 + 控制器（进行中）
-- [ ] Day 8-9: 动力学（M(q), C(q,q̇), G(q)）
-- [ ] Day 10: PD + 重力补偿
-- [ ] Day 11: 计算力矩控制 (CTC)
-- [ ] Day 12: 任务空间阻抗控制
-- [ ] Day 13: 4 种控制器综合对比
-- [ ] Day 14: Week 2 总结
+### Week 2: 动力学 + 控制器 ✅
+- [x] Day 8: 动力学量提取(M, C, G)与一致性验证
+- [x] Day 9: PD + 重力补偿(圆轨迹 0.23 mm)
+- [x] Day 10: 计算力矩控制(0.13 mm)
+- [x] Day 11: 笛卡尔阻抗控制(胡克定律误差 1%)
+- [x] Day 12: 四控制器同任务 + 15N 扰动综合对比
 
-### Week 3: 轨迹规划 + MPC（待定）
-### Week 4: 具身智能（模仿学习 / Diffusion Policy）（待定）
+### Week 3: 强化学习 ✅
+- [x] Day 13: Gymnasium 环境封装(23-dim obs, 7-dim action)
+- [x] Day 14: PPO 训练 250k 步,81% 成功率
+- [x] Day 15: Sparse reward + Curriculum 对比实验
+- [x] Day 16: Domain Randomization + 力矩控制对照消融
+- [x] Day 17: Model-based vs Model-free vs Robust-RL 三方对决
+
+### Week 4: 模仿学习 + 视觉感知(计划中)
+- [ ] Diffusion Policy 或 ACT 实现
+- [ ] 专家数据集生成与训练
+- [ ] 视觉输入(图像 → 动作)端到端策略
+
+### 后续方向:面向具身智能岗位的扩展
+- [ ] **足式机器人**:在 MuJoCo 中加载宇树 Go2 / G1,实现站立平衡与简单 locomotion
+- [ ] **真机栈基础**:补 C++ 与 Eigen,熟悉 ROS 2 + 实时控制循环
+- [ ] **多任务操作**:扩展到 peg-in-hole / 多步骤装配等接触丰富任务
 
 ## 快速开始
 
@@ -101,21 +114,29 @@ conda create -n robot python=3.10 -y
 conda activate robot
 pip install -r requirements.txt
 
+# 下载机器人模型
 mkdir -p assets && cd assets
 git clone https://gh-proxy.com/https://github.com/google-deepmind/mujoco_menagerie.git
 cd ..
 
-# 看 Week 1 终极演示
+# 跑 Week 1 演示
 python scripts/09_circle_tracking_offline.py
+
+# 跑 Week 2 四控制器对比
+python scripts/15_controller_comparison.py
+
+# 跑 Week 3 跨范式对决
+python scripts/26_grand_comparison.py
 ```
 
 ## 参考资料
 
 - Lynch & Park, *Modern Robotics: Mechanics, Planning, and Control*
-- DeepMind MuJoCo: https://github.com/google-deepmind/mujoco_menagerie
-- Franka Emika Panda 官方文档
+- 赵世钰,《强化学习的数学原理》(西湖大学,B 站公开课)
+- Schulman et al., *Proximal Policy Optimization Algorithms* (PPO)
+- OpenAI, *Solving Rubik's Cube with a Robot Hand* (Domain Randomization)
+- DeepMind MuJoCo Menagerie: https://github.com/google-deepmind/mujoco_menagerie
 
 ## License
 
 MIT
-
