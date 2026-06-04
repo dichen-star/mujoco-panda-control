@@ -1,137 +1,118 @@
-# MuJoCo Panda Control
+# MuJoCo Franka Panda 控制与学习全栈
 
-从经典控制到强化学习:在 MuJoCo 仿真中,用 7-DoF Franka Emika Panda 系统实现机器人
-运动学、动力学、四类控制器、强化学习与域随机化,并完成跨范式对比。下一步面向具身智能。
+> 从运动学、动力学控制，到强化学习与现代模仿学习 —— 一条贯穿具身智能的完整技术栈。
+> 每个方法都配有可复现代码、真实实验数字，以及"为什么 work / 为什么不 work"的诊断分析。
 
-## 周总结博客
+![多模态绕障：BC vs Diffusion Policy](logs/day21_multimodal.png)
 
-- [Week 1:从零搭建 7-DoF 机械臂运动学库](docs/week1_summary.md)
-- [Week 2:从动力学到四种控制器](docs/week2_summary.md)
-- [Week 3:从控制论到强化学习,与跨范式对决](docs/week3_summary.md)
+*多模态绕障：向左绕、向右绕都对。行为克隆（BC）把两条等价路径平均成"直行撞墙"（25% 碰撞）；Diffusion Policy + 动作分块从分布里采样一条连贯路径，干净二选一（0 碰撞）。*
 
-## 关键数据
+---
 
-| 模块 | 指标 | 对照 |
+## TL;DR
+
+4 周、22 个主题，在 MuJoCo 里用 Franka Panda 从零实现并对比了机器人"如何动起来"的四个层次：
+**运动学 → 动力学控制 → 强化学习 → 模仿学习**。
+
+不只是"训了一个能跑的策略"，而是在每一层都追问方法的能力边界。两个值得一看的洞察：
+
+- **sim-to-real 的鲁棒性 gap 取决于动作空间。** 位置控制的内部 PD 伺服会吸收域随机化（DR）的扰动，使 DR 看起来"没用"（86% vs 88%）；切到力矩控制，扰动才暴露出来，DR 把最坏情况成功率从 **8% 拉到 26%**。
+- **Diffusion Policy 解决的是多模态，不是协变量偏移。** 单模态 reach 任务上它与 BC 持平（~50%）；多模态绕障任务上它把碰撞率从 **25%（BC）降到 0%**。
+
+---
+
+## 成绩一览
+
+| 周 | 主题 | 关键结果 |
 |---|---|---|
-| 正运动学 (POE) | 与 MuJoCo 误差 ~1e-7 | 100 随机位形 |
-| 雅可比 | 1e-15(机器精度) | 100 随机位形 |
-| 逆运动学 (DLS) | 0.34 mm,97% 成功率 | 100 随机目标 + 随机重启 |
-| PD + 重力补偿 | 圆轨迹稳态 0.23 mm | Day 9 |
-| 计算力矩控制 (CTC) | 圆轨迹稳态 0.13 mm | Day 10 |
-| 笛卡尔阻抗控制 | 胡克定律误差 1% | Day 11 |
-| PPO (位置控制) | 81% 触达成功率,65 mm | 100 随机目标,与 IK oracle 持平 |
-| PPO + Domain Randomization | worst case 26%(vs nominal 8%) | 力矩控制下扰动鲁棒性 3.25× |
+| **W1** | 运动学（FK / IK） | 解析正/逆运动学，作为控制与示范采集的几何基础 |
+| **W2** | 动力学控制 | 计算力矩控制（CTC）末端跟踪 **0.13 mm**、PD+重力 0.23 mm；阻抗控制呈胡克定律柔顺 |
+| **W3** | 强化学习（PPO + DR） | PPO reach ~82%；力矩控制下 DR 将最坏情况 **8% → 26%**；揭示 sim-to-real gap 与动作空间的关系 |
+| **W4** | 模仿学习（BC / DAgger / DP） | DAgger 一次迭代 **56% → 90%**；多模态任务 Diffusion Policy 碰撞率 **25% → 0%** |
 
-跨范式对决(Day 17):
-
-| 方法 | 精度 (Scene 1) | 泛化 (Scene 2) | 鲁棒 (Scene 3) |
-|---|---|---|---|
-| CTC (model-based) | 0.148 mm | 100% | 100% |
-| PPO_pos (model-free) | 220.7 mm | 82% | 82% |
-| PPO_torque_DR (robust RL) | 277.5 mm | 17% | 20% |
-
-每种范式都有自己的强项,不存在普适最优——选型决策树详见 Week 3 总结。
-
-## 演示
-
-### Week 3 三方对决
-![Grand Comparison](logs/day17_grand_comparison.png)
-
-### Week 2 四控制器对比(同一圆轨迹 + 15N 扰动)
-![Controller Comparison](logs/day12_controller_comparison.png)
-
-### Week 1 圆轨迹跟踪
-![Circle Tracking](logs/day7_circle_tracking.png)
-
-视频:[`logs/day7_circle_demo.mp4`](logs/day7_circle_demo.mp4)
+---
 
 ## 技术栈
 
-- **仿真**: MuJoCo 3.7,Franka Panda(mujoco_menagerie)
-- **强化学习**: Stable-Baselines3, Gymnasium 0.29
-- **数学/控制**: Modern Robotics(POE / SE(3) 李代数 / DLS),自实现动力学补偿
-- **核心库**: NumPy, SciPy, PyTorch(SB3 后端)
-- **测试**: 全部核心算法与 MuJoCo 内置实现对照,精度可复现
-- **开发环境**: Ubuntu 24.04 (WSL2) + VS Code Remote + Git
+- **仿真**：MuJoCo + [mujoco_menagerie](https://github.com/google-deepmind/mujoco_menagerie)（Franka Emika Panda）
+- **基于模型的控制**：PD + 重力补偿 / 计算力矩控制（CTC）/ 阻抗控制
+- **强化学习**：Stable-Baselines3（PPO）、Gymnasium 自建环境、域随机化（位置控制 vs 力矩控制 ablation）
+- **模仿学习**：**从零实现** Behavioral Cloning、DAgger、Diffusion Policy（条件 DDPM）+ 动作分块
+- **语言 / 库**：Python 3.10, PyTorch, NumPy, Matplotlib
 
-## 项目结构
+---
+
+## 亮点结果
+
+**三范式大对比（Week 3）** —— CTC / PPO（位置）/ PPO（力矩 + DR）在同一 reach 任务上的精度与鲁棒性：
+
+![三范式大对比](logs/day17_grand_comparison.png)
+
+结论：没有银弹。任务定义清晰时不同范式会收敛到同一天花板，差别在代价与假设（模型需求、奖励设计、训练成本）。
+
+**DAgger 修复协变量偏移（Week 4）** —— 一次迭代从 56% 升到 90%，且 val MSE 几乎不动（分布 ≫ 数量）：
+
+![BC vs DAgger vs PPO](logs/day19_compare.png)
+
+---
+
+## 仓库结构
 
 ```
 mujoco-panda-control/
+├── assets/mujoco_menagerie/franka_emika_panda/   # Panda MJCF 模型
 ├── src/
-│   ├── kinematics/         # FK / Jacobian / IK
-│   ├── controllers/        # PD+G / CTC / 阻抗
-│   └── envs/               # Gymnasium 环境封装 + DR + 力矩控制版
-├── scripts/                # 27 个递进的实验脚本(按 Day 编号)
-├── tests/                  # 单元测试 + 与 MuJoCo 对照验证
-├── models/                 # 训练好的 PPO / DR 策略权重
-├── logs/                   # 每日日志 + 实验图 + 训练曲线 + 演示视频
-└── docs/                   # 周总结博客
+│   ├── kinematics/      # forward.py (FK), inverse.py (IK)
+│   ├── controllers/     # pd_gravity.py, ctc.py, impedance.py
+│   ├── envs/            # panda_reach_env*.py, obstacle2d_env.py, curriculum_callback.py
+│   └── imitation/       # bc_policy.py, diffusion_policy.py  (均为从零实现)
+├── scripts/             # 编号脚本：采集 / 训练 / 评估 / 对比 (15–36)
+├── models/              # 训练好的策略 (.zip = SB3, .pt = torch)
+├── data/                # 专家示范 (.npz)
+├── logs/                # 每日实验日志 + 结果图
+└── docs/                # 每周总结博客 + 项目叙事
 ```
 
-## 进度
+---
 
-### Week 1: 运动学 ✅
-- [x] Day 1: 环境搭建(WSL2 + MuJoCo)
-- [x] Day 2: Panda 加载 + 关节扫描 + 视频
-- [x] Day 3: SO(3) / SE(3) 变换 + 单元测试
-- [x] Day 4: 正运动学(POE)
-- [x] Day 5: 雅可比 + 奇异性分析
-- [x] Day 6: 逆运动学(DLS,97% 成功率)
-- [x] Day 7: 圆轨迹跟踪综合演示
-
-### Week 2: 动力学 + 控制器 ✅
-- [x] Day 8: 动力学量提取(M, C, G)与一致性验证
-- [x] Day 9: PD + 重力补偿(圆轨迹 0.23 mm)
-- [x] Day 10: 计算力矩控制(0.13 mm)
-- [x] Day 11: 笛卡尔阻抗控制(胡克定律误差 1%)
-- [x] Day 12: 四控制器同任务 + 15N 扰动综合对比
-
-### Week 3: 强化学习 ✅
-- [x] Day 13: Gymnasium 环境封装(23-dim obs, 7-dim action)
-- [x] Day 14: PPO 训练 250k 步,81% 成功率
-- [x] Day 15: Sparse reward + Curriculum 对比实验
-- [x] Day 16: Domain Randomization + 力矩控制对照消融
-- [x] Day 17: Model-based vs Model-free vs Robust-RL 三方对决
-
-### Week 4: 模仿学习 + 视觉感知(计划中)
-- [ ] Diffusion Policy 或 ACT 实现
-- [ ] 专家数据集生成与训练
-- [ ] 视觉输入(图像 → 动作)端到端策略
-
-## 快速开始
+## 环境配置
 
 ```bash
-git clone https://github.com/dichen-star/mujoco-panda-control.git
-cd mujoco-panda-control
-
 conda create -n robot python=3.10 -y
 conda activate robot
-pip install -r requirements.txt
+pip install mujoco gymnasium stable-baselines3 torch numpy matplotlib
 
-# 下载机器人模型
-mkdir -p assets && cd assets
-git clone https://gh-proxy.com/https://github.com/google-deepmind/mujoco_menagerie.git
-cd ..
-
-# 跑 Week 1 演示
-python scripts/09_circle_tracking_offline.py
-
-# 跑 Week 2 四控制器对比
-python scripts/15_controller_comparison.py
-
-# 跑 Week 3 跨范式对决
-python scripts/26_grand_comparison.py
+# Panda 模型（首次运行前）
+git clone https://github.com/google-deepmind/mujoco_menagerie assets/mujoco_menagerie
 ```
 
-## 参考资料
+---
 
-- Lynch & Park, *Modern Robotics: Mechanics, Planning, and Control*
-- 赵世钰,《强化学习的数学原理》(西湖大学,B 站公开课)
-- Schulman et al., *Proximal Policy Optimization Algorithms* (PPO)
-- OpenAI, *Solving Rubik's Cube with a Robot Hand* (Domain Randomization)
-- DeepMind MuJoCo Menagerie: https://github.com/google-deepmind/mujoco_menagerie
+## 快速复现
 
-## License
+```bash
+# Week 2 —— 四种控制器对比（CTC / PD+重力 / 阻抗）
+python scripts/15_controller_comparison.py
 
-MIT
+# Week 3 —— 三范式大对比（CTC / PPO位置 / PPO力矩+DR）
+python scripts/26_grand_comparison.py
+
+# Week 4 —— 模仿学习多模态对决（BC vs Diffusion Policy）★ 项目门面
+python scripts/34_collect_obstacle_demos.py   # 采集双模态示范
+python scripts/35_train_obstacle.py           # 训练 chunked BC + chunked DP
+python scripts/36_compare_obstacle.py         # 生成上方 hero 图
+```
+
+> 全部任务在 CPU 上即可运行（toy-scale）；有 GPU 时 Diffusion Policy 训练会更快。
+
+---
+
+## 详细记录
+
+- 项目叙事 / 面试讲法：[`docs/project_narrative.md`](docs/project_narrative.md)
+- 每周博客：[Week 1 运动学](docs/week1_summary.md) · [Week 2 控制](docs/week2_summary.md) · [Week 3 强化学习](docs/week3_summary.md) · [Week 4 模仿学习](docs/week4_summary.md)
+- 每日实验日志（含失败与根因）：`logs/dayNN.md`
+
+---
+
+*这是一个学习型作品集项目，任务为仿真中的 toy-scale reach / 导航。重点不在覆盖面，而在对每个方法能力边界的诊断式理解。*
