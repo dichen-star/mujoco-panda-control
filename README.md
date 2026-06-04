@@ -3,7 +3,7 @@
 > 从运动学、动力学控制，到强化学习与现代模仿学习 —— 一条贯穿具身智能的完整技术栈。
 > 每个方法都配有可复现代码、真实实验数字，以及"为什么 work / 为什么不 work"的诊断分析。
 
-![多模态绕障：BC vs Diffusion Policy](logs/day21_multimodal.gif)
+![多模态绕障：BC vs Diffusion Policy](logs/day21_multimodal.png)
 
 *多模态绕障：向左绕、向右绕都对。行为克隆（BC）把两条等价路径平均成"直行撞墙"（25% 碰撞）；Diffusion Policy + 动作分块从分布里采样一条连贯路径，干净二选一（0 碰撞）。*
 
